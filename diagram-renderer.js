@@ -2,6 +2,7 @@
  * Diagram Renderer
  *
  * Renders entity relationship diagrams on HTML5 Canvas
+ * FIXED: Proper coordinate handling for drag & drop
  */
 
 class DiagramRenderer {
@@ -13,9 +14,10 @@ class DiagramRenderer {
 
         // Rendering state
         this.zoom = 1.0;
-        this.panX = 0;
-        this.panY = 0;
+        this.panX = 50;  // Start with some padding
+        this.panY = 50;
         this.isDragging = false;
+        this.isPanning = false;
         this.dragEntity = null;
         this.dragOffset = { x: 0, y: 0 };
         this.lastMousePos = { x: 0, y: 0 };
@@ -25,7 +27,7 @@ class DiagramRenderer {
         this.entityWidth = 250;
         this.entityHeaderHeight = 50;
         this.entityFieldHeight = 30;
-        this.entityPadding = 40;
+        this.entityPadding = 60;
 
         // Colors
         this.colors = {
@@ -44,78 +46,118 @@ class DiagramRenderer {
     }
 
     setupCanvas() {
-        // Set canvas size
-        this.canvas.width = this.canvas.clientWidth * window.devicePixelRatio;
-        this.canvas.height = this.canvas.clientHeight * window.devicePixelRatio;
-        this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        // Set canvas size correctly
+        this.resizeCanvas();
 
         // Handle window resize
         window.addEventListener('resize', () => {
-            this.canvas.width = this.canvas.clientWidth * window.devicePixelRatio;
-            this.canvas.height = this.canvas.clientHeight * window.devicePixelRatio;
-            this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            this.resizeCanvas();
             this.render();
         });
     }
 
+    resizeCanvas() {
+        // Get the CSS size
+        const rect = this.canvas.getBoundingClientRect();
+
+        // Set canvas size (accounting for device pixel ratio for crisp rendering)
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = rect.height * dpr;
+
+        // Scale context to match
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+        this.ctx.scale(dpr, dpr);
+
+        // Store display dimensions
+        this.displayWidth = rect.width;
+        this.displayHeight = rect.height;
+    }
+
     setupEventListeners() {
-        // Mouse down - start drag
+        let isMouseDown = false;
+
+        // Mouse down - start drag or pan
         this.canvas.addEventListener('mousedown', (e) => {
-            const rect = this.canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left - this.panX) / this.zoom;
-            const y = (e.clientY - rect.top - this.panY) / this.zoom;
+            isMouseDown = true;
+            const worldPos = this.screenToWorld(e.clientX, e.clientY);
 
             // Check if clicking on entity
-            const clickedEntity = this.getEntityAtPoint(x, y);
+            const clickedEntity = this.getEntityAtPoint(worldPos.x, worldPos.y);
 
             if (clickedEntity) {
+                // Start entity drag
                 this.isDragging = true;
+                this.isPanning = false;
                 this.dragEntity = clickedEntity;
                 const pos = this.entityPositions.get(clickedEntity.name);
                 this.dragOffset = {
-                    x: x - pos.x,
-                    y: y - pos.y
+                    x: worldPos.x - pos.x,
+                    y: worldPos.y - pos.y
                 };
-            } else {
-                // Pan canvas
-                this.isDragging = true;
+                this.canvas.style.cursor = 'move';
+            } else if (this.entities.length > 0) {
+                // Start canvas pan (only if there are entities to pan)
+                this.isPanning = true;
+                this.isDragging = false;
                 this.dragEntity = null;
                 this.lastMousePos = { x: e.clientX, y: e.clientY };
+                this.canvas.style.cursor = 'grabbing';
             }
         });
 
-        // Mouse move - drag entity or pan
+        // Mouse move - drag entity or pan canvas
         this.canvas.addEventListener('mousemove', (e) => {
-            if (this.isDragging) {
-                const rect = this.canvas.getBoundingClientRect();
-
-                if (this.dragEntity) {
-                    // Drag entity
-                    const x = (e.clientX - rect.left - this.panX) / this.zoom;
-                    const y = (e.clientY - rect.top - this.panY) / this.zoom;
-
-                    this.entityPositions.set(this.dragEntity.name, {
-                        x: x - this.dragOffset.x,
-                        y: y - this.dragOffset.y
-                    });
+            if (!isMouseDown) {
+                // Update cursor on hover only if there are entities
+                if (this.entities.length > 0) {
+                    const worldPos = this.screenToWorld(e.clientX, e.clientY);
+                    const hoveredEntity = this.getEntityAtPoint(worldPos.x, worldPos.y);
+                    this.canvas.style.cursor = hoveredEntity ? 'pointer' : 'default';
                 } else {
-                    // Pan canvas
-                    const dx = e.clientX - this.lastMousePos.x;
-                    const dy = e.clientY - this.lastMousePos.y;
-                    this.panX += dx;
-                    this.panY += dy;
-                    this.lastMousePos = { x: e.clientX, y: e.clientY };
+                    this.canvas.style.cursor = 'default';
                 }
+                return;
+            }
 
+            if (this.isDragging && this.dragEntity) {
+                // Drag entity
+                const worldPos = this.screenToWorld(e.clientX, e.clientY);
+                this.entityPositions.set(this.dragEntity.name, {
+                    x: worldPos.x - this.dragOffset.x,
+                    y: worldPos.y - this.dragOffset.y
+                });
+                this.render();
+            } else if (this.isPanning) {
+                // Pan canvas
+                const dx = e.clientX - this.lastMousePos.x;
+                const dy = e.clientY - this.lastMousePos.y;
+                this.panX += dx;
+                this.panY += dy;
+                this.lastMousePos = { x: e.clientX, y: e.clientY };
                 this.render();
             }
         });
 
-        // Mouse up - stop drag
-        this.canvas.addEventListener('mouseup', () => {
+        // Mouse up - stop drag/pan
+        const stopDragging = (e) => {
+            isMouseDown = false;
             this.isDragging = false;
+            this.isPanning = false;
             this.dragEntity = null;
-        });
+
+            // Reset cursor based on hover state
+            if (this.entities.length > 0 && e) {
+                const worldPos = this.screenToWorld(e.clientX, e.clientY);
+                const hoveredEntity = this.getEntityAtPoint(worldPos.x, worldPos.y);
+                this.canvas.style.cursor = hoveredEntity ? 'pointer' : 'default';
+            } else {
+                this.canvas.style.cursor = 'default';
+            }
+        };
+
+        this.canvas.addEventListener('mouseup', stopDragging);
+        this.canvas.addEventListener('mouseleave', stopDragging);
 
         // Mouse wheel - zoom
         this.canvas.addEventListener('wheel', (e) => {
@@ -125,11 +167,11 @@ class DiagramRenderer {
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            // Zoom in/out
+            // Zoom factor
             const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.max(0.1, Math.min(3.0, this.zoom * zoomDelta));
 
-            // Adjust pan to zoom towards mouse
+            // Zoom towards mouse position
             const zoomChange = newZoom / this.zoom;
             this.panX = mouseX - (mouseX - this.panX) * zoomChange;
             this.panY = mouseY - (mouseY - this.panY) * zoomChange;
@@ -139,8 +181,29 @@ class DiagramRenderer {
         });
     }
 
+    /**
+     * Convert screen coordinates to world coordinates
+     */
+    screenToWorld(screenX, screenY) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = (screenX - rect.left - this.panX) / this.zoom;
+        const y = (screenY - rect.top - this.panY) / this.zoom;
+        return { x, y };
+    }
+
+    /**
+     * Convert world coordinates to screen coordinates
+     */
+    worldToScreen(worldX, worldY) {
+        const x = worldX * this.zoom + this.panX;
+        const y = worldY * this.zoom + this.panY;
+        return { x, y };
+    }
+
     getEntityAtPoint(x, y) {
-        for (const entity of this.entities) {
+        // Iterate in reverse order (top entities first)
+        for (let i = this.entities.length - 1; i >= 0; i--) {
+            const entity = this.entities[i];
             const pos = this.entityPositions.get(entity.name);
             if (!pos) continue;
 
@@ -184,8 +247,8 @@ class DiagramRenderer {
 
     render() {
         const ctx = this.ctx;
-        const width = this.canvas.clientWidth;
-        const height = this.canvas.clientHeight;
+        const width = this.displayWidth;
+        const height = this.displayHeight;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
@@ -286,7 +349,7 @@ class DiagramRenderer {
         let fieldText = field.name;
         if (field.isPrimaryKey) fieldText += ' 🔑';
         if (field.isForeignKey) fieldText += ' 🔗';
-        if (field.isUnique) fieldText += ' *';
+        if (field.isUnique) fieldText += ' ✦';
 
         ctx.fillText(fieldText, x + 10, y + height / 2);
 
@@ -376,16 +439,36 @@ class DiagramRenderer {
     }
 
     zoomIn() {
-        this.zoom = Math.min(3.0, this.zoom * 1.2);
+        const centerX = this.displayWidth / 2;
+        const centerY = this.displayHeight / 2;
+
+        const newZoom = Math.min(3.0, this.zoom * 1.2);
+        const zoomChange = newZoom / this.zoom;
+
+        this.panX = centerX - (centerX - this.panX) * zoomChange;
+        this.panY = centerY - (centerY - this.panY) * zoomChange;
+        this.zoom = newZoom;
+
         this.render();
     }
 
     zoomOut() {
-        this.zoom = Math.max(0.1, this.zoom / 1.2);
+        const centerX = this.displayWidth / 2;
+        const centerY = this.displayHeight / 2;
+
+        const newZoom = Math.max(0.1, this.zoom / 1.2);
+        const zoomChange = newZoom / this.zoom;
+
+        this.panX = centerX - (centerX - this.panX) * zoomChange;
+        this.panY = centerY - (centerY - this.panY) * zoomChange;
+        this.zoom = newZoom;
+
         this.render();
     }
 
     fitToScreen() {
+        if (this.entities.length === 0) return;
+
         // Calculate bounds of all entities
         let minX = Infinity, minY = Infinity;
         let maxX = -Infinity, maxY = -Infinity;
@@ -402,20 +485,18 @@ class DiagramRenderer {
 
         if (!isFinite(minX)) return;
 
-        const width = maxX - minX;
-        const height = maxY - minY;
-
-        const canvasWidth = this.canvas.clientWidth;
-        const canvasHeight = this.canvas.clientHeight;
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        const padding = 100;
 
         // Calculate zoom to fit
-        const zoomX = (canvasWidth - 100) / width;
-        const zoomY = (canvasHeight - 100) / height;
+        const zoomX = (this.displayWidth - padding) / contentWidth;
+        const zoomY = (this.displayHeight - padding) / contentHeight;
         this.zoom = Math.min(zoomX, zoomY, 1.0);
 
         // Center the diagram
-        this.panX = (canvasWidth - width * this.zoom) / 2 - minX * this.zoom;
-        this.panY = (canvasHeight - height * this.zoom) / 2 - minY * this.zoom;
+        this.panX = (this.displayWidth - contentWidth * this.zoom) / 2 - minX * this.zoom;
+        this.panY = (this.displayHeight - contentHeight * this.zoom) / 2 - minY * this.zoom;
 
         this.render();
     }
