@@ -1,8 +1,10 @@
-# ERP Visual Designer 🎨
+# ERP Visual Designer 🎨 (TypeScript Edition)
 
 **Real-time Entity Relationship Diagram Generator**
 
-Un outil visuel puissant pour créer des diagrammes ER en temps réel à partir d'un DSL (Domain Specific Language) simple et intuitif.
+A powerful visual tool to create ER diagrams in real-time from a simple and intuitive DSL (Domain Specific Language).
+
+**This is the TypeScript version with Clean Architecture implementation.**
 
 ![ERP Visual Designer](screenshot.png)
 
@@ -29,15 +31,25 @@ Un outil visuel puissant pour créer des diagrammes ER en temps réel à partir 
 - **Validation** - Vérification de la syntaxe DSL
 - **Formatage** - Indentation automatique du code
 
-## 🚀 Démarrage Rapide
+## 🚀 Quick Start
 
 ### Installation
 
-Aucune installation nécessaire ! C'est un outil 100% web.
+```bash
+# Install dependencies
+npm install
 
-1. Ouvrez `index.html` dans votre navigateur
-2. Commencez à écrire votre DSL
-3. Observez le diagramme se générer en temps réel !
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Type check
+npm run type-check
+```
+
+The application will open at http://localhost:8001
 
 ### Utilisation
 
@@ -213,12 +225,75 @@ Cliquez sur le bouton "Auto Layout" pour réorganiser automatiquement les entit�
 
 Cliquez sur "Validate" pour vérifier que votre DSL est correct et identifier les erreurs.
 
-## 🛠️ Technologies Utilisées
+## 🛠️ Technologies Used
 
-- **Monaco Editor** - Éditeur de code (VS Code)
-- **HTML5 Canvas** - Rendu des diagrammes
-- **Lucide Icons** - Icônes modernes
-- **Vanilla JavaScript** - Pas de framework, performances maximales
+- **TypeScript** - Type-safe development
+- **Vite** - Lightning-fast build tool
+- **Monaco Editor** - Code editor (VS Code in browser)
+- **HTML5 Canvas** - Diagram rendering
+- **Lucide Icons** - Modern icons
+- **Clean Architecture** - Maintainable and testable code structure
+
+## 🏗️ Architecture
+
+This project follows Clean Architecture principles with clear separation of concerns:
+
+```
+src/
+├── domain/                 # Business logic & entities
+│   ├── entities/          # Core domain models
+│   │   ├── Entity.ts
+│   │   ├── Field.ts
+│   │   └── Relationship.ts
+│   ├── value-objects/     # Value objects
+│   │   └── Position.ts
+│   └── repositories/      # Repository interfaces
+│       ├── IDiagramRepository.ts
+│       └── IRenderer.ts
+│
+├── application/           # Use cases & services
+│   ├── use-cases/        # Business operations
+│   │   ├── ParseDSLUseCase.ts
+│   │   ├── RenderDiagramUseCase.ts
+│   │   └── ExportCodeUseCase.ts
+│   └── services/         # Application services
+│       └── DiagramService.ts
+│
+├── infrastructure/        # External dependencies
+│   ├── parsers/          # DSL parsing
+│   │   └── DSLParserAdapter.ts
+│   ├── renderers/        # Canvas rendering (includes hierarchical layout at line 133)
+│   │   └── CanvasRendererAdapter.ts
+│   └── exporters/        # Code generation
+│       ├── SQLExporter.ts
+│       ├── TypeScriptExporter.ts
+│       └── JSONExporter.ts
+│
+├── presentation/          # UI layer
+│   ├── controllers/      # UI coordination
+│   │   └── AppController.ts
+│   └── factories/        # UI component factories
+│       └── MonacoEditorFactory.ts
+│
+└── main.ts               # Application bootstrap
+```
+
+### Key Features of the Architecture:
+
+- **Domain Layer**: Pure business logic with no external dependencies
+- **Application Layer**: Orchestrates domain entities through use cases
+- **Infrastructure Layer**: Implements technical details (parsers, renderers, exporters)
+- **Presentation Layer**: Handles UI interactions and user input
+
+### Hierarchical Layout Algorithm
+
+The most important algorithm is in `CanvasRendererAdapter.ts` at line 133 (`autoLayout()` method):
+
+1. **Graph Construction**: Builds a directed graph from entity relationships
+2. **Level Assignment**: Uses BFS to assign hierarchical levels
+3. **Barycenter Ordering**: Minimizes edge crossings within levels
+4. **Position Calculation**: Computes final x,y coordinates
+5. **Auto-fit**: Automatically scales and centers the diagram
 
 ## 🚀 Déploiement SAAS
 

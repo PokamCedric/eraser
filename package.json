@@ -1,22 +1,47 @@
 {
-  "name": "erp-visual-designer",
+  "name": "erp-visual-designer-ts",
   "version": "1.0.0",
-  "description": "Real-time Entity Relationship Diagram Generator with DSL",
+  "description": "Real-time Entity Relationship Diagram Generator with DSL - TypeScript Edition",
   "type": "module",
+  "exports": {
+    "./src/infrastructure/parsers/DSLParserAdapter": "./src/infrastructure/parsers/DSLParserAdapter.ts",
+    "./src/infrastructure/renderers/CanvasRendererAdapter": "./src/infrastructure/renderers/CanvasRendererAdapter.ts",
+    "./src/application/use-cases/ParseDSLUseCase": "./src/application/use-cases/ParseDSLUseCase.ts",
+    "./src/infrastructure/renderers/IconLoader": "./src/infrastructure/renderers/IconLoader.ts",
+    "./src/domain/entities/Entity": "./src/domain/entities/Entity.ts",
+    "./src/domain/entities/Field": "./src/domain/entities/Field.ts"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc && vite build",
+    "build:with-rust": "npm run build:rust && tsc && vite build",
+    "build:rust": "napi build --platform --release --manifest-path rust/Cargo.toml --target-dir rust/target --output-dir src/infrastructure/layout/native",
+    "build:rust:debug": "napi build --platform --manifest-path rust/Cargo.toml --target-dir rust/target --output-dir src/infrastructure/layout/native",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "napi": {
+    "napi.binaryName": "layer-classifier-native",
+    "targets": {
+      "defaults": true
+    }
   },
   "keywords": [
     "erp",
     "diagram",
     "dsl",
-    "visual-designer"
+    "visual-designer",
+    "typescript"
   ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "vite": "^7.1.9"
+    "@napi-rs/cli": "^3.4.1",
+    "typescript": "^5.3.3",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
   }
 }

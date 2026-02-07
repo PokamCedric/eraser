@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 build/
+__pycache__/
 
 # Environment variables
 .env
@@ -45,3 +46,14 @@ coverage/
 .cache/
 .temp/
 .tmp/
+.claude/
+
+# Rust
+rust/target/
+rust/**/*.rs.bk
+rust/Cargo.lock
+
+# Native modules
+src/infrastructure/layout/native/*.node
+src/infrastructure/layout/native/*.d.ts
+src/infrastructure/layout/native/*.js
