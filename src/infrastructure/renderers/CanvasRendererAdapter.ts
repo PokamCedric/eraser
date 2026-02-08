@@ -131,7 +131,22 @@ export class CanvasRendererAdapter implements IRenderer {
         this.entityPositions.set(entityName, position);
         // Note: Drag hooks are handled by CanvasInteractionHandler
       },
-      (x: number, y: number) => this._getEntityAtPoint(x, y)
+      (x: number, y: number) => this._getEntityAtPoint(x, y),
+      // Click handler - calls onEntityClicked hook
+      (entity: Entity, worldX: number, worldY: number) => {
+        if (this.hooks?.onEntityClicked) {
+          const pos = this.entityPositions.get(entity.name);
+          const entityX = pos?.x ?? 0;
+          const entityY = pos?.y ?? 0;
+          // Pass world coordinates relative to entity position
+          const handled = this.hooks.onEntityClicked(entity, worldX - entityX, worldY - entityY);
+          if (handled) {
+            this.render(); // Re-render if hook handled the click
+          }
+          return handled;
+        }
+        return false;
+      }
     );
   }
 

@@ -21,6 +21,9 @@ export class CanvasInteractionHandler {
   private dragOffset: MousePosition = { x: 0, y: 0 };
   private lastMousePos: MousePosition = { x: 0, y: 0 };
   private isMouseDown: boolean = false;
+  private mouseDownPos: MousePosition = { x: 0, y: 0 };
+  private hasMoved: boolean = false;
+  private static readonly CLICK_THRESHOLD = 5; // pixels
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -29,7 +32,8 @@ export class CanvasInteractionHandler {
     private getEntities: () => Entity[],
     private getEntityPositions: () => Map<string, Position>,
     private updateEntityPosition: (entityName: string, position: Position) => void,
-    private isPointInEntity: (x: number, y: number) => Entity | null
+    private isPointInEntity: (x: number, y: number) => Entity | null,
+    private onEntityClick?: (entity: Entity, worldX: number, worldY: number) => boolean | void
   ) {
     this.setupEventListeners();
   }
@@ -44,6 +48,8 @@ export class CanvasInteractionHandler {
 
   private handleMouseDown(e: MouseEvent): void {
     this.isMouseDown = true;
+    this.hasMoved = false;
+    this.mouseDownPos = { x: e.clientX, y: e.clientY };
     const rect = this.canvas.getBoundingClientRect();
     const worldPos = this.viewportManager.screenToWorld(e.clientX, e.clientY, rect);
     const clickedEntity = this.isPointInEntity(worldPos.x, worldPos.y);
@@ -82,6 +88,13 @@ export class CanvasInteractionHandler {
     }
 
     if (this.isDragging && this.dragEntity) {
+      // Check if we've moved enough to consider it a drag (not a click)
+      const dx = Math.abs(e.clientX - this.mouseDownPos.x);
+      const dy = Math.abs(e.clientY - this.mouseDownPos.y);
+      if (dx > CanvasInteractionHandler.CLICK_THRESHOLD || dy > CanvasInteractionHandler.CLICK_THRESHOLD) {
+        this.hasMoved = true;
+      }
+
       const rect = this.canvas.getBoundingClientRect();
       const worldPos = this.viewportManager.screenToWorld(e.clientX, e.clientY, rect);
       this.updateEntityPosition(
@@ -102,6 +115,9 @@ export class CanvasInteractionHandler {
   }
 
   private handleMouseUp(e?: MouseEvent): void {
+    const wasOnEntity = this.dragEntity;
+    const didNotMove = !this.hasMoved;
+
     this.isMouseDown = false;
     this.isDragging = false;
     this.isPanning = false;
@@ -111,6 +127,13 @@ export class CanvasInteractionHandler {
       const rect = this.canvas.getBoundingClientRect();
       const worldPos = this.viewportManager.screenToWorld(e.clientX, e.clientY, rect);
       const hoveredEntity = this.isPointInEntity(worldPos.x, worldPos.y);
+
+      // Detect click: mousedown on entity + mouseup without significant movement
+      if (wasOnEntity && didNotMove && this.onEntityClick) {
+        // Call click handler - if it returns true, it handled the click
+        this.onEntityClick(wasOnEntity, worldPos.x, worldPos.y);
+      }
+
       this.canvas.style.cursor = hoveredEntity ? 'pointer' : 'default';
     } else {
       this.canvas.style.cursor = 'default';
