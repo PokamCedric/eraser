@@ -4,8 +4,18 @@
   "description": "Eraser - ERP Visual Designer with DSL",
   "private": true,
   "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*",
+    "./parser": "./src/infrastructure/parsers/DSLParserAdapter.ts",
+    "./renderer": "./src/infrastructure/renderers/CanvasRendererAdapter.ts",
+    "./use-cases": "./src/application/use-cases/index.ts",
+    "./icons": "./src/infrastructure/renderers/IconLoader.ts"
+  },
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --webpack",
+    "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "type-check": "tsc --noEmit",
