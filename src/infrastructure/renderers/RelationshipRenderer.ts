@@ -19,6 +19,12 @@ export interface RelationshipRenderConfig {
   colors: {
     relationLine: string;
   };
+  /**
+   * Optional callback to get visible field count for an entity.
+   * Used when entities can be collapsed to show fewer fields.
+   * If not provided, uses entity.fields.length.
+   */
+  getVisibleFieldCount?: (entity: Entity) => number;
 }
 
 export class RelationshipRenderer implements IRelationshipRenderStrategy {
@@ -63,10 +69,18 @@ export class RelationshipRenderer implements IRelationshipRenderStrategy {
       toY = toFieldY;
     } else {
       // Entities are vertically aligned - use top/bottom connection
+      // Use effective field count for collapsed entities
+      const fromEffectiveCount = this.config.getVisibleFieldCount
+        ? this.config.getVisibleFieldCount(fromEntity)
+        : fromEntity.fields.length;
+      const toEffectiveCount = this.config.getVisibleFieldCount
+        ? this.config.getVisibleFieldCount(toEntity)
+        : toEntity.fields.length;
+
       if (fromFieldY < toFieldY) {
         // From is above To
         fromX = fromCenterX;
-        fromY = fromPos.y + this.config.entityHeaderHeight + (fromEntity.fields.length * this.config.entityFieldHeight);
+        fromY = fromPos.y + this.config.entityHeaderHeight + (fromEffectiveCount * this.config.entityFieldHeight);
         toX = toCenterX;
         toY = toPos.y;
       } else {
@@ -74,7 +88,7 @@ export class RelationshipRenderer implements IRelationshipRenderStrategy {
         fromX = fromCenterX;
         fromY = fromPos.y;
         toX = toCenterX;
-        toY = toPos.y + this.config.entityHeaderHeight + (toEntity.fields.length * this.config.entityFieldHeight);
+        toY = toPos.y + this.config.entityHeaderHeight + (toEffectiveCount * this.config.entityFieldHeight);
       }
     }
 
@@ -174,15 +188,24 @@ export class RelationshipRenderer implements IRelationshipRenderStrategy {
 
   /**
    * Get the Y coordinate of a specific field within an entity
+   * Uses getVisibleFieldCount callback if provided to handle collapsed entities
    */
   private getFieldYPosition(entity: Entity, fieldName: string, entityPos: Position): number {
     const fieldIndex = entity.fields.findIndex(f => f.name === fieldName);
-    if (fieldIndex === -1) {
-      // Field not found, default to entity center
-      return entityPos.y + this.config.entityHeaderHeight + (entity.fields.length * this.config.entityFieldHeight) / 2;
+
+    // Use callback if provided, otherwise use total field count
+    const effectiveFieldCount = this.config.getVisibleFieldCount
+      ? this.config.getVisibleFieldCount(entity)
+      : entity.fields.length;
+
+    if (fieldIndex === -1 || fieldIndex >= effectiveFieldCount) {
+      // Field not found OR field is hidden (collapsed) - default to center of visible fields
+      return entityPos.y + this.config.entityHeaderHeight +
+             (effectiveFieldCount * this.config.entityFieldHeight) / 2;
     }
-    // Return the vertical center of the field
-    return entityPos.y + this.config.entityHeaderHeight + (fieldIndex * this.config.entityFieldHeight) + (this.config.entityFieldHeight / 2);
+    // Field is visible - return its vertical center
+    return entityPos.y + this.config.entityHeaderHeight +
+           (fieldIndex * this.config.entityFieldHeight) + (this.config.entityFieldHeight / 2);
   }
 
   /**

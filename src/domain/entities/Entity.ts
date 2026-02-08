@@ -41,7 +41,7 @@ export class Entity {
             displayName: this.displayName,
             icon: this.icon,
             color: this.color,
-            fields: [...this.fields, field]
+            fields: [...this.fields, field],
         });
     }
 
@@ -55,7 +55,7 @@ export class Entity {
             displayName: this.displayName,
             icon: this.icon,
             color: this.color,
-            fields
+            fields,
         });
     }
 }

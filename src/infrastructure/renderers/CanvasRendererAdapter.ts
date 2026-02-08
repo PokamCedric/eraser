@@ -116,7 +116,8 @@ export class CanvasRendererAdapter implements IRenderer {
       entityFieldHeight: this.entityFieldHeight,
       colors: {
         relationLine: config.colors?.relationLine ?? '#3b82f6'
-      }
+      },
+      getVisibleFieldCount: config.getVisibleFieldCount,
     });
 
     this._setupCanvas();

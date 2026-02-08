@@ -20,7 +20,9 @@ export { ParseDSLUseCase } from './application/use-cases/ParseDSLUseCase';
 
 // Domain entities
 export { Entity } from './domain/entities/Entity';
+export type { EntityProps } from './domain/entities/Entity';
 export { Field } from './domain/entities/Field';
+export type { FieldProps } from './domain/entities/Field';
 export { Relationship } from './domain/entities/Relationship';
 
 // Value objects
@@ -40,3 +42,7 @@ export type {
 // Renderer config types (for implementing custom renderers)
 export type { EntityRenderConfig } from './infrastructure/renderers/EntityRenderer';
 export type { RelationshipRenderConfig } from './infrastructure/renderers/RelationshipRenderer';
+
+// DSL Editor components
+export { MonacoEditor } from './presentation/pages/DesignerPage/widgets/DSLEditor/MonacoEditor';
+export { EditorColors, Color } from './presentation/pages/DesignerPage/widgets/DSLEditor/editorColors';

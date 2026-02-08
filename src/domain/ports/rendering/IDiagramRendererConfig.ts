@@ -138,4 +138,19 @@ export interface IDiagramRendererConfig {
    * Can be overridden by custom strategies
    */
   dimensions?: DiagramDimensions;
+
+  /**
+   * Optional callback to get visible field count for an entity.
+   * Used for relationship anchor calculations when entities can be collapsed.
+   * If not provided, uses total field count (entity.fields.length).
+   *
+   * @example
+   * ```ts
+   * getVisibleFieldCount: (entity) => {
+   *   const isExpanded = expansionService.isExpanded(entity.name);
+   *   return isExpanded ? entity.fields.length : Math.min(entity.fields.length, 5);
+   * }
+   * ```
+   */
+  getVisibleFieldCount?: (entity: Entity) => number;
 }
