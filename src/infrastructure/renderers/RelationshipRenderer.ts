@@ -1,13 +1,15 @@
 /**
  * Relationship Renderer
  *
- * Renders relationships between entities on canvas.
+ * Default implementation of IRelationshipRenderStrategy.
+ * Renders relationships between entities on canvas with orthogonal lines.
  * Single Responsibility: relationship visual representation only
  */
 
 import { Entity } from '../../domain/entities/Entity';
 import { Relationship } from '../../domain/entities/Relationship';
 import { Position } from '../../domain/value-objects/Position';
+import type { IRelationshipRenderStrategy } from '../../domain/ports/rendering';
 import { getRelationshipCardinality } from '../../data/models/utils';
 
 export interface RelationshipRenderConfig {
@@ -19,7 +21,7 @@ export interface RelationshipRenderConfig {
   };
 }
 
-export class RelationshipRenderer {
+export class RelationshipRenderer implements IRelationshipRenderStrategy {
   constructor(private config: RelationshipRenderConfig) {}
 
   /**

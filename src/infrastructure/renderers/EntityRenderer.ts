@@ -1,11 +1,13 @@
 /**
  * Entity Renderer
  *
- * Renders entities on canvas.
+ * Default implementation of IEntityRenderStrategy.
+ * Renders entities on canvas with ERP-style design.
  * Single Responsibility: entity visual representation only
  */
 
 import { Entity } from '../../domain/entities/Entity';
+import type { IEntityRenderStrategy, RenderContext } from '../../domain/ports/rendering';
 import { IconLoader } from './IconLoader';
 
 export interface EntityRenderConfig {
@@ -21,10 +23,53 @@ export interface EntityRenderConfig {
   };
 }
 
-export class EntityRenderer {
+export class EntityRenderer implements IEntityRenderStrategy {
   private iconsLoaded: Set<string> = new Set();
 
   constructor(private config: EntityRenderConfig) {}
+
+  // ============================================
+  // IEntityRenderStrategy Implementation
+  // ============================================
+
+  /**
+   * Render an entity (implements IEntityRenderStrategy)
+   */
+  render(context: RenderContext): void {
+    this.drawEntity(context.ctx, context.entity, context.x, context.y);
+  }
+
+  /**
+   * Get entity width (implements IEntityRenderStrategy)
+   */
+  getEntityWidth(): number {
+    return this.config.entityWidth;
+  }
+
+  /**
+   * Get entity height (implements IEntityRenderStrategy)
+   */
+  getEntityHeight(entity: Entity): number {
+    return this.calculateHeight(entity);
+  }
+
+  /**
+   * Get header height (implements IEntityRenderStrategy)
+   */
+  getHeaderHeight(): number {
+    return this.config.entityHeaderHeight;
+  }
+
+  /**
+   * Get field height (implements IEntityRenderStrategy)
+   */
+  getFieldHeight(): number {
+    return this.config.entityFieldHeight;
+  }
+
+  // ============================================
+  // Internal Rendering Methods
+  // ============================================
 
   /**
    * Draw an entity at the specified position

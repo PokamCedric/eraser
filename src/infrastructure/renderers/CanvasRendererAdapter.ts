@@ -3,6 +3,25 @@
  *
  * Adapts the canvas renderer to implement IRenderer
  * Refactored following SOLID principles with modular components
+ *
+ * Supports dependency injection via IDiagramRendererConfig:
+ * - Custom entity render strategy (implements IEntityRenderStrategy)
+ * - Custom relationship render strategy (implements IRelationshipRenderStrategy)
+ * - Lifecycle hooks for rendering events
+ *
+ * @example
+ * ```ts
+ * // Use with default renderers
+ * const renderer = new CanvasRendererAdapter(canvas);
+ *
+ * // Use with custom entity renderer
+ * const renderer = new CanvasRendererAdapter(canvas, {
+ *   entityRenderStrategy: new PowerAppsEntityRenderer(),
+ *   hooks: {
+ *     onEntityClicked: (entity) => console.log('Clicked:', entity.name)
+ *   }
+ * });
+ * ```
  */
 import { IRenderer } from '../../domain/repositories/IRenderer';
 import { Entity } from '../../domain/entities/Entity';
@@ -17,6 +36,12 @@ import { EntityRenderer } from './EntityRenderer';
 import { RelationshipRenderer } from './RelationshipRenderer';
 import { CanvasInteractionHandler } from './CanvasInteractionHandler';
 import { IconLoader } from './IconLoader';
+import type {
+  IDiagramRendererConfig,
+  IRenderHooks,
+  IEntityRenderStrategy,
+  IRelationshipRenderStrategy,
+} from '../../domain/ports/rendering';
 
 export class CanvasRendererAdapter implements IRenderer {
   private canvas: HTMLCanvasElement;
@@ -26,9 +51,9 @@ export class CanvasRendererAdapter implements IRenderer {
 
   // Entity layout
   private entityPositions: Map<string, Position> = new Map();
-  private readonly entityWidth: number = 250;
-  private readonly entityHeaderHeight: number = 50;
-  private readonly entityFieldHeight: number = 30;
+  private readonly entityWidth: number;
+  private readonly entityHeaderHeight: number;
+  private readonly entityFieldHeight: number;
   private readonly entityPadding: number = 60;
 
   // Display dimensions
@@ -37,12 +62,21 @@ export class CanvasRendererAdapter implements IRenderer {
 
   // SOLID: Delegated components (SRP - Single Responsibility Principle)
   private viewportManager: ViewportManager;
-  private entityRenderer: EntityRenderer;
-  private relationshipRenderer: RelationshipRenderer;
+  private entityRenderStrategy: IEntityRenderStrategy;
+  private relationshipRenderStrategy: IRelationshipRenderStrategy;
   // Kept to prevent garbage collection and maintain event listeners
   private interactionHandler: CanvasInteractionHandler;
 
-  constructor(canvas: HTMLCanvasElement) {
+  // Lifecycle hooks for rendering events
+  private hooks?: IRenderHooks;
+
+  /**
+   * Create a new CanvasRendererAdapter
+   *
+   * @param canvas - HTML Canvas element to render to
+   * @param config - Optional configuration for dependency injection
+   */
+  constructor(canvas: HTMLCanvasElement, config: IDiagramRendererConfig = {}) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -50,26 +84,38 @@ export class CanvasRendererAdapter implements IRenderer {
     }
     this.ctx = ctx;
 
+    // Apply dimensions from config or use defaults
+    this.entityWidth = config.dimensions?.entityWidth ?? 250;
+    this.entityHeaderHeight = config.dimensions?.entityHeaderHeight ?? 50;
+    this.entityFieldHeight = config.dimensions?.entityFieldHeight ?? 30;
+
+    // Store hooks
+    this.hooks = config.hooks;
+
     // Initialize SOLID components
     this.viewportManager = new ViewportManager();
-    this.entityRenderer = new EntityRenderer({
+
+    // Use injected entity render strategy or create default
+    this.entityRenderStrategy = config.entityRenderStrategy ?? new EntityRenderer({
       entityWidth: this.entityWidth,
       entityHeaderHeight: this.entityHeaderHeight,
       entityFieldHeight: this.entityFieldHeight,
       colors: {
-        entityBorder: '#e2e8f0',
-        entityShadow: 'rgba(0,0,0,0.1)',
-        fieldText: '#475569',
-        primaryKeyBg: '#dbeafe',
-        foreignKeyBg: '#fef3c7'
+        entityBorder: config.colors?.entityBorder ?? '#e2e8f0',
+        entityShadow: config.colors?.entityShadow ?? 'rgba(0,0,0,0.1)',
+        fieldText: config.colors?.fieldText ?? '#475569',
+        primaryKeyBg: config.colors?.primaryKeyBg ?? '#dbeafe',
+        foreignKeyBg: config.colors?.foreignKeyBg ?? '#fef3c7'
       }
     });
-    this.relationshipRenderer = new RelationshipRenderer({
+
+    // Use injected relationship render strategy or create default
+    this.relationshipRenderStrategy = config.relationshipRenderStrategy ?? new RelationshipRenderer({
       entityWidth: this.entityWidth,
       entityHeaderHeight: this.entityHeaderHeight,
       entityFieldHeight: this.entityFieldHeight,
       colors: {
-        relationLine: '#3b82f6'
+        relationLine: config.colors?.relationLine ?? '#3b82f6'
       }
     });
 
@@ -82,6 +128,7 @@ export class CanvasRendererAdapter implements IRenderer {
       () => this.entityPositions,
       (entityName: string, position: Position) => {
         this.entityPositions.set(entityName, position);
+        // Note: Drag hooks are handled by CanvasInteractionHandler
       },
       (x: number, y: number) => this._getEntityAtPoint(x, y)
     );
@@ -124,19 +171,25 @@ export class CanvasRendererAdapter implements IRenderer {
     const width = this.displayWidth;
     const height = this.displayHeight;
 
+    // Call before render hook
+    this.hooks?.onBeforeRender?.(this.entities, this.relationships);
+
     ctx.clearRect(0, 0, width, height);
     ctx.save();
 
     // Apply viewport transformation (delegated to ViewportManager)
     this.viewportManager.applyTransform(ctx);
 
-    // Draw relationships (delegated to RelationshipRenderer)
+    // Draw relationships (delegated to RelationshipRenderStrategy)
     this._drawRelationships(ctx);
 
-    // Draw entities (delegated to EntityRenderer)
+    // Draw entities (delegated to EntityRenderStrategy)
     this._drawEntities(ctx);
 
     ctx.restore();
+
+    // Call after render hook
+    this.hooks?.onAfterRender?.(this.entities, this.relationships);
   }
 
   zoomIn(): void {
@@ -146,6 +199,9 @@ export class CanvasRendererAdapter implements IRenderer {
     // Delegated to ViewportManager
     this.viewportManager.zoomIn(centerX, centerY);
     this.render();
+
+    // Call zoom change hook
+    this.hooks?.onZoomChange?.(this.getZoomLevel());
   }
 
   zoomOut(): void {
@@ -155,6 +211,9 @@ export class CanvasRendererAdapter implements IRenderer {
     // Delegated to ViewportManager
     this.viewportManager.zoomOut(centerX, centerY);
     this.render();
+
+    // Call zoom change hook
+    this.hooks?.onZoomChange?.(this.getZoomLevel());
   }
 
   fitToScreen(): void {
@@ -169,8 +228,8 @@ export class CanvasRendererAdapter implements IRenderer {
 
       minX = Math.min(minX, pos.x);
       minY = Math.min(minY, pos.y);
-      maxX = Math.max(maxX, pos.x + this.entityWidth);
-      maxY = Math.max(maxY, pos.y + this.entityRenderer.calculateHeight(entity));
+      maxX = Math.max(maxX, pos.x + this.entityRenderStrategy.getEntityWidth());
+      maxY = Math.max(maxY, pos.y + this.entityRenderStrategy.getEntityHeight(entity));
     }
 
     if (!isFinite(minX)) return;
@@ -191,6 +250,9 @@ export class CanvasRendererAdapter implements IRenderer {
 
   autoLayout(): void {
     this.entityPositions.clear();
+
+    // Call before layout hook
+    this.hooks?.onBeforeLayout?.(this.entities, this.relationships);
 
     // Step 1-5: Compute hierarchical layers using Layer Classification Engine
     // This algorithm uses Floyd-Warshall inversé to detect transitive intercalations
@@ -218,10 +280,10 @@ export class CanvasRendererAdapter implements IRenderer {
       optimizedEntities,
       this.relationships,
       {
-        entityWidth: this.entityWidth,
-        entityHeaderHeight: this.entityHeaderHeight,
-        entityFieldHeight: this.entityFieldHeight,
-        horizontalSpacing: this.entityWidth + 120,
+        entityWidth: this.entityRenderStrategy.getEntityWidth(),
+        entityHeaderHeight: this.entityRenderStrategy.getHeaderHeight(),
+        entityFieldHeight: this.entityRenderStrategy.getFieldHeight(),
+        horizontalSpacing: this.entityRenderStrategy.getEntityWidth() + 120,
         minVerticalSpacing: 40,  // Increased spacing for better readability
         baseX: 100
       }
@@ -229,6 +291,9 @@ export class CanvasRendererAdapter implements IRenderer {
 
     // Apply positions
     this.entityPositions = positions;
+
+    // Call after layout hook
+    this.hooks?.onAfterLayout?.(this.entityPositions);
 
     // Step 9: Debug output
     this._logLayoutDebugInfo(finalLayers);
@@ -283,8 +348,8 @@ export class CanvasRendererAdapter implements IRenderer {
       const pos = this.entityPositions.get(entity.name);
       if (!pos) continue;
 
-      // Delegated to EntityRenderer
-      if (this.entityRenderer.isPointInside(x, y, pos.x, pos.y, entity)) {
+      // Delegated to EntityRenderStrategy
+      if (this.entityRenderStrategy.isPointInside(x, y, pos.x, pos.y, entity)) {
         return entity;
       }
     }
@@ -293,7 +358,8 @@ export class CanvasRendererAdapter implements IRenderer {
 
   private _initializePositions(): void {
     const cols = Math.ceil(Math.sqrt(this.entities.length));
-    const spacing = this.entityWidth + this.entityPadding * 2;
+    const entityWidth = this.entityRenderStrategy.getEntityWidth();
+    const spacing = entityWidth + this.entityPadding * 2;
 
     this.entities.forEach((entity, index) => {
       if (!this.entityPositions.has(entity.name)) {
@@ -313,8 +379,13 @@ export class CanvasRendererAdapter implements IRenderer {
       const pos = this.entityPositions.get(entity.name);
       if (!pos) continue;
 
-      // Delegated to EntityRenderer
-      this.entityRenderer.drawEntity(ctx, entity, pos.x, pos.y);
+      // Delegated to EntityRenderStrategy
+      this.entityRenderStrategy.render({
+        ctx,
+        x: pos.x,
+        y: pos.y,
+        entity,
+      });
     }
   }
 
@@ -330,8 +401,8 @@ export class CanvasRendererAdapter implements IRenderer {
 
       if (!fromPos || !toPos) continue;
 
-      // Delegated to RelationshipRenderer
-      this.relationshipRenderer.drawRelationship(ctx, rel, fromEntity, toEntity, fromPos, toPos);
+      // Delegated to RelationshipRenderStrategy
+      this.relationshipRenderStrategy.drawRelationship(ctx, rel, fromEntity, toEntity, fromPos, toPos);
     }
   }
 }
