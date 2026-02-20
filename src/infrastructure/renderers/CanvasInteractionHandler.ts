@@ -25,6 +25,12 @@ export class CanvasInteractionHandler {
   private hasMoved: boolean = false;
   private static readonly CLICK_THRESHOLD = 5; // pixels
 
+  // Stored bound references so removeEventListener can match them exactly
+  private _boundMouseDown: (e: MouseEvent) => void;
+  private _boundMouseMove: (e: MouseEvent) => void;
+  private _boundMouseUp: (e?: MouseEvent) => void;
+  private _boundWheel: (e: WheelEvent) => void;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private viewportManager: ViewportManager,
@@ -33,17 +39,22 @@ export class CanvasInteractionHandler {
     private getEntityPositions: () => Map<string, Position>,
     private updateEntityPosition: (entityName: string, position: Position) => void,
     private isPointInEntity: (x: number, y: number) => Entity | null,
-    private onEntityClick?: (entity: Entity, worldX: number, worldY: number) => boolean | void
+    private onEntityClick?: (entity: Entity, worldX: number, worldY: number, screenX: number, screenY: number) => boolean | void,
+    private onBackgroundClick?: () => void
   ) {
+    this._boundMouseDown = this.handleMouseDown.bind(this);
+    this._boundMouseMove = this.handleMouseMove.bind(this);
+    this._boundMouseUp = this.handleMouseUp.bind(this);
+    this._boundWheel = this.handleWheel.bind(this);
     this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
-    this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-    this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
-    this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
-    this.canvas.addEventListener('mouseleave', this.handleMouseUp.bind(this));
-    this.canvas.addEventListener('wheel', this.handleWheel.bind(this));
+    this.canvas.addEventListener('mousedown', this._boundMouseDown);
+    this.canvas.addEventListener('mousemove', this._boundMouseMove);
+    this.canvas.addEventListener('mouseup', this._boundMouseUp);
+    this.canvas.addEventListener('mouseleave', this._boundMouseUp);
+    this.canvas.addEventListener('wheel', this._boundWheel);
   }
 
   private handleMouseDown(e: MouseEvent): void {
@@ -117,6 +128,7 @@ export class CanvasInteractionHandler {
   private handleMouseUp(e?: MouseEvent): void {
     const wasOnEntity = this.dragEntity;
     const didNotMove = !this.hasMoved;
+    const wasMouseDown = this.isMouseDown;
 
     this.isMouseDown = false;
     this.isDragging = false;
@@ -131,7 +143,10 @@ export class CanvasInteractionHandler {
       // Detect click: mousedown on entity + mouseup without significant movement
       if (wasOnEntity && didNotMove && this.onEntityClick) {
         // Call click handler - if it returns true, it handled the click
-        this.onEntityClick(wasOnEntity, worldPos.x, worldPos.y);
+        this.onEntityClick(wasOnEntity, worldPos.x, worldPos.y, e.clientX, e.clientY);
+      } else if (wasMouseDown && !wasOnEntity && didNotMove && this.onBackgroundClick) {
+        // Click on background (not on any entity) → deselect
+        this.onBackgroundClick();
       }
 
       this.canvas.style.cursor = hoveredEntity ? 'pointer' : 'default';
@@ -157,10 +172,10 @@ export class CanvasInteractionHandler {
    * Clean up event listeners
    */
   destroy(): void {
-    this.canvas.removeEventListener('mousedown', this.handleMouseDown);
-    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
-    this.canvas.removeEventListener('mouseup', this.handleMouseUp);
-    this.canvas.removeEventListener('mouseleave', this.handleMouseUp);
-    this.canvas.removeEventListener('wheel', this.handleWheel);
+    this.canvas.removeEventListener('mousedown', this._boundMouseDown);
+    this.canvas.removeEventListener('mousemove', this._boundMouseMove);
+    this.canvas.removeEventListener('mouseup', this._boundMouseUp);
+    this.canvas.removeEventListener('mouseleave', this._boundMouseUp);
+    this.canvas.removeEventListener('wheel', this._boundWheel);
   }
 }

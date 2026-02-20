@@ -67,6 +67,12 @@ export class CanvasRendererAdapter implements IRenderer {
   // Kept to prevent garbage collection and maintain event listeners
   private interactionHandler: CanvasInteractionHandler;
 
+  // Stored resize handler reference for proper cleanup
+  private _resizeHandler: () => void = () => {};
+
+  // Selection state
+  private selectedEntityName: string | null = null;
+
   // Lifecycle hooks for rendering events
   private hooks?: IRenderHooks;
 
@@ -133,24 +139,43 @@ export class CanvasRendererAdapter implements IRenderer {
       },
       (x: number, y: number) => this._getEntityAtPoint(x, y),
       // Click handler - calls onEntityClicked hook
-      (entity: Entity, worldX: number, worldY: number) => {
+      (entity: Entity, worldX: number, worldY: number, screenX: number, screenY: number) => {
         if (this.hooks?.onEntityClicked) {
           const pos = this.entityPositions.get(entity.name);
           const entityX = pos?.x ?? 0;
           const entityY = pos?.y ?? 0;
-          // Pass world coordinates relative to entity position
-          const handled = this.hooks.onEntityClicked(entity, worldX - entityX, worldY - entityY);
+          // Pass world coordinates relative to entity position + screen coordinates
+          const handled = this.hooks.onEntityClicked(entity, worldX - entityX, worldY - entityY, screenX, screenY);
           if (handled) {
             this.render(); // Re-render if hook handled the click
+            return true;
           }
-          return handled;
         }
-        return false;
+        // Not handled by hook → select this entity
+        this.selectEntity(entity.name);
+        return true;
+      },
+      // Background click handler → deselect
+      () => {
+        if (this.selectedEntityName !== null) {
+          this.selectEntity(null);
+        }
       }
     );
   }
 
-  setData(entities: Entity[], relationships: Relationship[]): void {
+  /**
+   * Select or deselect an entity
+   * @param name - Entity name to select, or null to deselect
+   */
+  selectEntity(name: string | null): void {
+    if (this.selectedEntityName === name) return;
+    this.selectedEntityName = name;
+    this.render();
+    this.hooks?.onEntitySelected?.(name);
+  }
+
+  setData(entities: Entity[], relationships: Relationship[], preservePositions = false): void {
     this.entities = entities;
     this.relationships = relationships;
 
@@ -173,13 +198,33 @@ export class CanvasRendererAdapter implements IRenderer {
         });
     }
 
-    // Apply auto-layout automatically if there are entities
     if (this.entities.length > 0) {
-      this.autoLayout();
+      if (preservePositions) {
+        // Remove stale positions for entities that no longer exist
+        const entityNames = new Set(entities.map(e => e.name));
+        for (const name of Array.from(this.entityPositions.keys())) {
+          if (!entityNames.has(name)) {
+            this.entityPositions.delete(name);
+          }
+        }
+        // Only assign positions to newly added entities
+        this._initializePositions();
+        this.render();
+      } else {
+        this.autoLayout();
+      }
     } else {
       this._initializePositions();
       this.render();
     }
+  }
+
+  /**
+   * Destroy the renderer and remove all event listeners
+   */
+  destroy(): void {
+    window.removeEventListener('resize', this._resizeHandler);
+    this.interactionHandler.destroy();
   }
 
   render(): void {
@@ -337,10 +382,11 @@ export class CanvasRendererAdapter implements IRenderer {
   // Private methods
   private _setupCanvas(): void {
     this._resizeCanvas();
-    window.addEventListener('resize', () => {
+    this._resizeHandler = () => {
       this._resizeCanvas();
       this.render();
-    });
+    };
+    window.addEventListener('resize', this._resizeHandler);
   }
 
   private _resizeCanvas(): void {
@@ -401,6 +447,7 @@ export class CanvasRendererAdapter implements IRenderer {
         x: pos.x,
         y: pos.y,
         entity,
+        isSelected: entity.name === this.selectedEntityName,
       });
     }
   }
