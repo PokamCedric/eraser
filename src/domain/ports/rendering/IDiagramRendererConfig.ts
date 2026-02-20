@@ -39,9 +39,13 @@ export interface IRenderHooks {
 
   /**
    * Called when an entity is clicked
+   * @param x - X coordinate relative to entity position
+   * @param y - Y coordinate relative to entity position
+   * @param screenX - X coordinate in screen/client space
+   * @param screenY - Y coordinate in screen/client space
    * @returns true to prevent default behavior
    */
-  onEntityClicked?(entity: Entity, x: number, y: number): boolean;
+  onEntityClicked?(entity: Entity, x: number, y: number, screenX: number, screenY: number): boolean;
 
   /**
    * Called when an entity is right-clicked (context menu)
@@ -78,6 +82,12 @@ export interface IRenderHooks {
    * Called when zoom level changes
    */
   onZoomChange?(zoomPercent: number): void;
+
+  /**
+   * Called when an entity is selected or deselected
+   * @param entityName - Name of the selected entity, or null when deselected
+   */
+  onEntitySelected?(entityName: string | null): void;
 }
 
 /**
